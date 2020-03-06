@@ -28,4 +28,27 @@ namespace AADB2C.JITUserMigration.Models
             this.version = Assembly.GetExecutingAssembly().GetName().Version.ToString();
         }
     }
+
+    public class B2CPeopleSoftResponseModel
+    {
+        public string version { get; set; }
+        public int status { get; set; }
+        public string userMessage { get; set; }
+
+        // Optional claims
+        public bool isMigrated { get; set; }
+        public string password { get; set; }
+        public string email { get; set; }
+        public string username { get; set; }
+        public string displayName { get; set; }
+        public string givenName { get; set; }
+        public string surName { get; set; }
+
+        public B2CPeopleSoftResponseModel(string message, HttpStatusCode status)
+        {
+            this.userMessage = message;
+            this.status = (int)status;
+            this.version = Assembly.GetExecutingAssembly().GetName().Version.ToString();
+        }
+    }
 }

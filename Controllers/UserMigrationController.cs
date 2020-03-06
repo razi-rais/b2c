@@ -17,7 +17,7 @@ using Microsoft.WindowsAzure.Storage.Table;
 
 namespace AADB2C.JITUserMigration.Controllers
 {
-    //[Route("api/[controller]/[action]")]
+    
     public class UserMigrationController : ApiController
     {
        
@@ -164,6 +164,80 @@ namespace AADB2C.JITUserMigration.Controllers
             //return Ok(outputClaims);
         }
 
+        public IHttpActionResult Create()
+        {
+            string input = Request.Content.ReadAsStringAsync().Result;
+
+            // If not data came in, then return
+            if (this.Request.Content == null)
+            {
+                return Content(HttpStatusCode.Conflict, new B2CResponseModel("Request content is null", HttpStatusCode.Conflict));
+            }
+
+            //// Read the input claims from the request body
+            //using (StreamReader reader = new StreamReader(Request.Body, Encoding.UTF8))
+            //{
+            //    input = await reader.ReadToEndAsync();
+            //}
+
+            // Check input content value
+            if (string.IsNullOrEmpty(input))
+            {
+                return Content(HttpStatusCode.Conflict, new B2CResponseModel("Request content is empty", HttpStatusCode.Conflict));
+            }
+
+            // Convert the input string into InputClaimsModel object
+            PeopleSoftInputClaimsModel inputClaims = PeopleSoftInputClaimsModel.Parse(input);
+
+            if (inputClaims == null)
+            {
+                return Content(HttpStatusCode.Conflict, new B2CResponseModel("Can not deserialize input claims", HttpStatusCode.Conflict));
+            }
+
+            if (string.IsNullOrEmpty(inputClaims.uid))
+            {
+                return Content(HttpStatusCode.Conflict, new B2CResponseModel("User 'uid' is null or empty", HttpStatusCode.Conflict));
+            }
+
+            if (string.IsNullOrEmpty(inputClaims.password))
+            {
+                return Content(HttpStatusCode.Conflict, new B2CResponseModel("Password is null or empty", HttpStatusCode.Conflict));
+            }
+
+
+            AzureADGraphClient azureADGraphClient = new AzureADGraphClient(ConfigurationManager.AppSettings["Tenant"],
+                                                                            ConfigurationManager.AppSettings["ClientId"],
+                                                                            ConfigurationManager.AppSettings["ClientSecret"]);
+
+            GraphAccountModel account = azureADGraphClient.SearcUserBySignInNames(inputClaims.uid).Result;
+            B2CPeopleSoftResponseModel outputClaimsCol = new B2CPeopleSoftResponseModel("", HttpStatusCode.OK);
+            Ldap.Controllers.ValuesController tmp = new Ldap.Controllers.ValuesController();
+            outputClaimsCol.isMigrated = false;
+            outputClaimsCol.username = inputClaims.uid;
+
+            //Only migrate account that is not migrated already, and verified successfully within the local LDAP store. 
+            if (account == null)
+            {
+                bool result = CreateUser(azureADGraphClient, inputClaims);
+                if (result)
+                {
+                    outputClaimsCol.password = inputClaims.password;
+                    outputClaimsCol.displayName = inputClaims.sn;
+                    outputClaimsCol.email = inputClaims.email;
+                    outputClaimsCol.givenName = inputClaims.givenname;
+                    outputClaimsCol.surName = inputClaims.givenname;
+                    outputClaimsCol.isMigrated = false;
+
+                }
+            }
+            else
+            {
+               return Content(HttpStatusCode.Conflict, new B2CResponseModel($"User already exists {inputClaims.uid}", HttpStatusCode.Conflict));
+
+            }
+            return Ok(outputClaimsCol);
+ 
+        }
         private bool MigrateUser(AzureADGraphClient azureADGraphClient, 
                                         InputClaimsModel inputClaims)
         {
@@ -183,6 +257,24 @@ namespace AADB2C.JITUserMigration.Controllers
 
         }
 
+        private bool CreateUser(AzureADGraphClient azureADGraphClient,
+                                        PeopleSoftInputClaimsModel inputClaims)
+        {
+            //AzureADGraphClient azureADGraphClient = new AzureADGraphClient(this.AppSettings.Tenant, this.AppSettings.ClientId, this.AppSettings.ClientSecret);
+
+            // Create the user using Graph API
+            return azureADGraphClient.CreateAccount(
+                "userName",
+                inputClaims.uid,
+                null,
+                null,
+                inputClaims.email,
+                inputClaims.password,
+                inputClaims.sn,
+                inputClaims.email,
+                inputClaims.givenname).Result;
+
+        }
         //[System.Web.Http.HttpPost]
         //public IHttpActionResult RaiseErrorIfExists()
         //{
@@ -346,6 +438,7 @@ namespace AADB2C.JITUserMigration.Controllers
         /// Create consumer user accounts
         /// When creating user accounts in a B2C tenant, you can send an HTTP POST request to the /users endpoint
         /// </summary>
+        /// userType must be userName or emailAddress
         public async Task<bool> CreateAccount(
                                             string userType,
                                             string signInName,

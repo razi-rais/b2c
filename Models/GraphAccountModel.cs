@@ -72,7 +72,15 @@ namespace AADB2C.JITUserMigration.Models
             this.signInNames = new List<SignInName>();
 
             if (accountType != AccountType.SocialOnly)
+            {
+                //uncomment this check to enable using both userName and emailAddress for sign-in
+                //if (!string.IsNullOrEmpty(email) && userType != "emailAddress")
+                //{
+                //    this.signInNames.Add(new SignInName("emailAddress", email));
+                //}
+
                 this.signInNames.Add(new SignInName(userType, signInName));
+            }
 
             this.mailNickname = Guid.NewGuid().ToString();
 
@@ -81,8 +89,9 @@ namespace AADB2C.JITUserMigration.Models
             // For social account, you can specify the alternate email
             List<string> otherMails = new List<string>();
 
-            if (accountType != AccountType.LocalOnly && (!string.IsNullOrEmpty(email)))
-                otherMails.Add(email);
+            //if (accountType != AccountType.LocalOnly && (!string.IsNullOrEmpty(email)))
+            if (!string.IsNullOrEmpty(email))
+                 otherMails.Add(email);
 
             this.otherMails = otherMails;
 
