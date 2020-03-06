@@ -1,0 +1,37 @@
+<TrustFrameworkPolicy xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns="http://schemas.microsoft.com/online/cpim/schemas/2013/06" PolicySchemaVersion="0.3.0.0" TenantId="ultimatetest1.onmicrosoft.com" PolicyId="B2C_1A_signup_signin_saml_v2" PublicPolicyUri="http://ultimatetest1.onmicrosoft.com/B2C_1A_signup_signin_saml_v2" TenantObjectId="9859cd0c-9d99-4683-abcc-87462f67a0bc">
+  <BasePolicy>
+    <TenantId>ultimatetest1.onmicrosoft.com</TenantId>
+    <PolicyId>B2C_1A_TrustFrameworkExtensions</PolicyId>
+  </BasePolicy>
+  <UserJourneys>
+    <UserJourney Id="SignUpOrSignIn">
+      <OrchestrationSteps>
+        <OrchestrationStep Order="4" Type="SendClaims" CpimIssuerTechnicalProfileReferenceId="Saml2AssertionIssuer" />
+      </OrchestrationSteps>
+    </UserJourney>
+  </UserJourneys>
+  <RelyingParty>
+    <DefaultUserJourney ReferenceId="SignUpOrSignIn" />
+    <!-- Added for SAML issuer -->
+    <TechnicalProfile Id="PolicyProfile">
+      <DisplayName>PolicyProfile</DisplayName>
+      <Protocol Name="SAML2" />
+       <Metadata>
+        	<Item Key="IssuerUri">https://b2csamlrp.azurewebsites.net</Item>
+			<Item Key="PartnerEntity">https://b2csamlrp.azurewebsites.net/Metadata</Item>
+			<Item Key="WantsSignedAssertions">false</Item>
+			<Item Key="ResponsesSigned">false</Item>
+      </Metadata>
+      <OutputClaims>
+        <OutputClaim ClaimTypeReferenceId="displayName" />
+        <OutputClaim ClaimTypeReferenceId="givenName" />
+        <OutputClaim ClaimTypeReferenceId="surname" />
+        <!-- <OutputClaim ClaimTypeReferenceId="email" DefaultValue="test@reply.com" /> -->
+        <OutputClaim ClaimTypeReferenceId="signInNames.emailAddress" DefaultValue="" PartnerClaimType="email" />
+        <OutputClaim ClaimTypeReferenceId="identityProvider" DefaultValue="" />
+        <OutputClaim ClaimTypeReferenceId="objectId" PartnerClaimType="objectId" />
+      </OutputClaims>
+      <SubjectNamingInfo ClaimType="objectId" ExcludeAsClaim="true" />
+    </TechnicalProfile>
+  </RelyingParty>
+</TrustFrameworkPolicy>
