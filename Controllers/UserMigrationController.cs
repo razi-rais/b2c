@@ -7,6 +7,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Web.Http;
 using System.Web.Mvc;
@@ -75,6 +76,13 @@ namespace AADB2C.JITUserMigration.Controllers
                                                                             ConfigurationManager.AppSettings["ClientSecret"]);
 
             GraphAccountModel account = azureADGraphClient.SearcUserBySignInNames(inputClaims.signInName).Result;
+
+            // User already exists, no need to migrate.
+            if (account != null)
+            {
+                return Ok();
+            }
+
             B2CResponseModel outputClaimsCol = new B2CResponseModel("", HttpStatusCode.OK);
             Ldap.Controllers.ValuesController tmp = new Ldap.Controllers.ValuesController();
             outputClaimsCol.isMigrated = false;
@@ -83,12 +91,16 @@ namespace AADB2C.JITUserMigration.Controllers
             //Only migrate account that is not migrated already, and verified successfully within the local LDAP store. 
             if (account == null && tmp.VerifyCredentials(inputClaims.signInName, inputClaims.password))
             {
+                inputClaims.sn = "EID";
+                inputClaims.givenName = inputClaims.signInName;
+                inputClaims.email = string.Format("{0}@noreply.com", inputClaims.signInName);
+               
                 bool result = MigrateUser(azureADGraphClient, inputClaims);
                 if (result)
                 {
-                    outputClaimsCol.displayName = "This is a displayName from migrate app"; //TODO: read from LDAP
-                    outputClaimsCol.givenName = "This is a givenName from migrate app"; //TODO: read from LDAP
-                    outputClaimsCol.surName = "This is a surName from migrate app"; //TODO: read from LDAP
+                    outputClaimsCol.displayName = inputClaims.sn;
+                    outputClaimsCol.givenName = inputClaims.givenName;
+                    outputClaimsCol.surName = inputClaims.email;
                     outputClaimsCol.password = inputClaims.password;
                     outputClaimsCol.isMigrated = true;
 
@@ -164,7 +176,22 @@ namespace AADB2C.JITUserMigration.Controllers
             //return Ok(outputClaims);
         }
 
-        public IHttpActionResult Create()
+        [System.Web.Http.HttpPost]
+        public IHttpActionResult LoalAccountSignIn()
+        {
+            try
+            {
+                return Migrate();
+                //return Ok();
+            }
+            catch
+            {
+                return Content(HttpStatusCode.Conflict, new B2CResponseModel("Can not migrate user", HttpStatusCode.Conflict));
+
+            }
+        }
+
+            public IHttpActionResult Create()
         {
             string input = Request.Content.ReadAsStringAsync().Result;
 
@@ -204,6 +231,18 @@ namespace AADB2C.JITUserMigration.Controllers
                 return Content(HttpStatusCode.Conflict, new B2CResponseModel("Password is null or empty", HttpStatusCode.Conflict));
             }
 
+            //bool isEmail = Regex.IsMatch(emailString, @"\A(?:[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)\Z", RegexOptions.IgnoreCase);
+
+            if (string.IsNullOrEmpty(inputClaims.email) ||
+               !Regex.IsMatch(inputClaims.email, @"\A(?:[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)\Z", RegexOptions.IgnoreCase))
+            {
+                return Content(HttpStatusCode.Conflict, new B2CResponseModel("Email is empty or not in the correct format", HttpStatusCode.Conflict));
+            }
+
+            //inputClaims.email = GetClaimValue(inputClaims.email);
+            inputClaims.givenname = GetClaimValue(inputClaims.givenname);
+            inputClaims.sn = GetClaimValue(inputClaims.sn);
+           
 
             AzureADGraphClient azureADGraphClient = new AzureADGraphClient(ConfigurationManager.AppSettings["Tenant"],
                                                                             ConfigurationManager.AppSettings["ClientId"],
@@ -214,6 +253,7 @@ namespace AADB2C.JITUserMigration.Controllers
             Ldap.Controllers.ValuesController tmp = new Ldap.Controllers.ValuesController();
             outputClaimsCol.isMigrated = false;
             outputClaimsCol.username = inputClaims.uid;
+            
 
             //Only migrate account that is not migrated already, and verified successfully within the local LDAP store. 
             if (account == null)
@@ -221,8 +261,8 @@ namespace AADB2C.JITUserMigration.Controllers
                 bool result = CreateUser(azureADGraphClient, inputClaims);
                 if (result)
                 {
-                    outputClaimsCol.password = inputClaims.password;
-                    outputClaimsCol.displayName = inputClaims.sn;
+                    outputClaimsCol.password = GetClaimValue(inputClaims.password);
+                    outputClaimsCol.displayName = GetClaimValue(inputClaims.sn);
                     outputClaimsCol.email = inputClaims.email;
                     outputClaimsCol.givenName = inputClaims.givenname;
                     outputClaimsCol.surName = inputClaims.givenname;
@@ -238,6 +278,14 @@ namespace AADB2C.JITUserMigration.Controllers
             return Ok(outputClaimsCol);
  
         }
+
+        private string GetClaimValue(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+                return "n/a";
+            return value;
+
+        }
         private bool MigrateUser(AzureADGraphClient azureADGraphClient, 
                                         InputClaimsModel inputClaims)
         {
@@ -245,15 +293,15 @@ namespace AADB2C.JITUserMigration.Controllers
 
             // Create the user using Graph API
             return azureADGraphClient.CreateAccount(
-                "emailAddress",
+                "username",
                 inputClaims.signInName,
                 null,
                 null,
                 null,
                 inputClaims.password,
-                "This is a displayName from migrate app",
-                "This is a first name from migrate app",
-                "This is a last name from migrate app").Result;
+                inputClaims.sn,
+                inputClaims.email,
+                inputClaims.givenName).Result;
 
         }
 
