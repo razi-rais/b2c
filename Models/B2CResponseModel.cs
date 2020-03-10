@@ -43,6 +43,7 @@ namespace AADB2C.JITUserMigration.Models
         public string displayName { get; set; }
         public string givenName { get; set; }
         public string surName { get; set; }
+        public bool isActivated { get; set; }
 
         public B2CPeopleSoftResponseModel(string message, HttpStatusCode status)
         {

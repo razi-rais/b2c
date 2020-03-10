@@ -15,6 +15,7 @@ namespace AADB2C.JITUserMigration.Models
         public string email { get; set; }
         public string sn { get; set; }
         public string uid { get; set; }
+        public bool? isActivated { get; set; }
         public override string ToString()
         {
             return JsonConvert.SerializeObject(this);

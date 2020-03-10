@@ -191,7 +191,17 @@ namespace AADB2C.JITUserMigration.Controllers
             }
         }
 
-            public IHttpActionResult Create()
+        public IHttpActionResult User()
+        {
+           return  ProcessRequest();
+           
+        }
+        public IHttpActionResult Create()
+        {
+            return ProcessRequest();
+        }
+
+        private IHttpActionResult ProcessRequest()
         {
             string input = Request.Content.ReadAsStringAsync().Result;
 
@@ -239,11 +249,6 @@ namespace AADB2C.JITUserMigration.Controllers
                 return Content(HttpStatusCode.Conflict, new B2CResponseModel("Email is empty or not in the correct format", HttpStatusCode.Conflict));
             }
 
-            //inputClaims.email = GetClaimValue(inputClaims.email);
-            inputClaims.givenname = GetClaimValue(inputClaims.givenname);
-            inputClaims.sn = GetClaimValue(inputClaims.sn);
-           
-
             AzureADGraphClient azureADGraphClient = new AzureADGraphClient(ConfigurationManager.AppSettings["Tenant"],
                                                                             ConfigurationManager.AppSettings["ClientId"],
                                                                             ConfigurationManager.AppSettings["ClientSecret"]);
@@ -253,11 +258,14 @@ namespace AADB2C.JITUserMigration.Controllers
             Ldap.Controllers.ValuesController tmp = new Ldap.Controllers.ValuesController();
             outputClaimsCol.isMigrated = false;
             outputClaimsCol.username = inputClaims.uid;
-            
+
 
             //Only migrate account that is not migrated already, and verified successfully within the local LDAP store. 
             if (account == null)
             {
+                inputClaims.givenname = GetClaimValue(inputClaims.givenname);
+                inputClaims.sn = GetClaimValue(inputClaims.sn);
+
                 bool result = CreateUser(azureADGraphClient, inputClaims);
                 if (result)
                 {
@@ -270,13 +278,32 @@ namespace AADB2C.JITUserMigration.Controllers
 
                 }
             }
+            //Update user
             else
             {
-               return Content(HttpStatusCode.Conflict, new B2CResponseModel($"User already exists {inputClaims.uid}", HttpStatusCode.Conflict));
+                //TODO: Check for pasword as may want to stop update to it.
+                inputClaims.givenname = inputClaims.givenname == null ? account.surname : inputClaims.givenname;
+                inputClaims.sn = inputClaims.sn == null ? account.displayName : inputClaims.sn;
+                inputClaims.email = inputClaims.email == null ? account.givenName : inputClaims.email;
+                inputClaims.isActivated = inputClaims.isActivated == null ? account.accountEnabled : inputClaims.isActivated;
+
+
+                bool result = UpdateUser(azureADGraphClient, inputClaims, account.objectId);
+                if (result)
+                {
+                    outputClaimsCol.password = GetClaimValue(inputClaims.password);
+                    outputClaimsCol.displayName = GetClaimValue(inputClaims.sn);
+                    outputClaimsCol.email = inputClaims.email;
+                    outputClaimsCol.givenName = inputClaims.givenname;
+                    outputClaimsCol.surName = inputClaims.givenname;
+                    outputClaimsCol.isActivated = (bool)inputClaims.isActivated;
+                    //outputClaimsCol.isMigrated = false;
+
+                }
+                //return Content(HttpStatusCode.Conflict, new B2CResponseModel($"User already exists {inputClaims.uid}", HttpStatusCode.Conflict));
 
             }
             return Ok(outputClaimsCol);
- 
         }
 
         private string GetClaimValue(string value)
@@ -305,6 +332,26 @@ namespace AADB2C.JITUserMigration.Controllers
 
         }
 
+        private bool UpdateUser(AzureADGraphClient azureADGraphClient,
+                                       PeopleSoftInputClaimsModel inputClaims, string objectId)
+        {
+            //AzureADGraphClient azureADGraphClient = new AzureADGraphClient(this.AppSettings.Tenant, this.AppSettings.ClientId, this.AppSettings.ClientSecret);
+
+            // Create the user using Graph API
+            return azureADGraphClient.UpdateAccount(
+                objectId,
+                "userName",
+                inputClaims.uid,
+                null,
+                null,
+                inputClaims.email,
+                inputClaims.password,
+                inputClaims.sn,
+                inputClaims.email,
+                inputClaims.givenname,
+                (bool)inputClaims.isActivated).Result;
+
+        }
         private bool CreateUser(AzureADGraphClient azureADGraphClient,
                                         PeopleSoftInputClaimsModel inputClaims)
         {
@@ -323,133 +370,8 @@ namespace AADB2C.JITUserMigration.Controllers
                 inputClaims.givenname).Result;
 
         }
-        //[System.Web.Http.HttpPost]
-        //public IHttpActionResult RaiseErrorIfExists()
-        //{
-        //    string input = Request.Content.ReadAsStringAsync().Result;
-
-        //    // If not data came in, then return
-        //    if (this.Request.Content == null)
-        //    {
-        //        return Content(HttpStatusCode.Conflict, new B2CResponseModel("Request content is null", HttpStatusCode.Conflict));
-        //    }
-
-        //    // Read the input claims from the request body
-        //    //using (StreamReader reader = new StreamReader(Request.Body, Encoding.UTF8))
-        //    //{
-        //    //    input = await reader.ReadToEndAsync();
-        //    //}
-
-        //    // Check input content value
-        //    if (string.IsNullOrEmpty(input))
-        //    {
-        //        return Content(HttpStatusCode.Conflict, new B2CResponseModel("Request content is empty", HttpStatusCode.Conflict));
-        //    }
-
-        //    // Convert the input string into InputClaimsModel object
-        //    InputClaimsModel inputClaims = InputClaimsModel.Parse(input);
-
-        //    if (inputClaims == null)
-        //    {
-        //        return Content(HttpStatusCode.Conflict, new B2CResponseModel("Can not deserialize input claims", HttpStatusCode.Conflict));
-        //    }
-
-        //    if (string.IsNullOrEmpty(inputClaims.signInName))
-        //    {
-        //        return Content(HttpStatusCode.Conflict, new B2CResponseModel("User 'signInName' is null or empty", HttpStatusCode.Conflict));
-        //    }
-
-        //    // Create a retrieve operation that takes a customer entity.
-        //    // Note: Azure Blob Table query is case sensitive, always set the input email to lower case
-        //    var retrieveOperation = TableOperation.Retrieve<UserTableEntity>(Consts.MigrationTablePartition, inputClaims.signInName.ToLower());
-
-        //    //CloudTable table = await GetSignUpTable(this.AppSettings.BlobStorageConnectionString);
-
-        //    // Execute the retrieve operation.
-        //   // TableResult userMigrationEntity = await table.ExecuteAsync(retrieveOperation);
-        //    TableResult userMigrationEntity = null;
-
-        //    if (userMigrationEntity != null && userMigrationEntity.Result != null)
-        //    {
-        //        return Content(HttpStatusCode.Conflict, new B2CResponseModel("A user with the specified ID already exists. Please choose a different one. (migration API)", HttpStatusCode.Conflict));
-        //    }
-
-        //    return Ok();
-        //}
-
-        //[HttpPost(Name = "RaiseErrorIfNotExists")]
-        //public async Task<ActionResult> RaiseErrorIfNotExists()
-        //{
-        //    string input = null;
-
-        //    // If not data came in, then return
-        //    if (this.Request.Body == null)
-        //    {
-        //        return Content(HttpStatusCode.Conflict, new B2CResponseModel("Request content is null", HttpStatusCode.Conflict));
-        //    }
-
-        //    // Read the input claims from the request body
-        //    using (StreamReader reader = new StreamReader(Request.Body, Encoding.UTF8))
-        //    {
-        //        input = await reader.ReadToEndAsync();
-        //    }
-
-        //    // Check input content value
-        //    if (string.IsNullOrEmpty(input))
-        //    {
-        //        return Content(HttpStatusCode.Conflict, new B2CResponseModel("Request content is empty", HttpStatusCode.Conflict));
-        //    }
-
-        //    // Convert the input string into InputClaimsModel object
-        //    InputClaimsModel inputClaims = InputClaimsModel.Parse(input);
-
-        //    if (inputClaims == null)
-        //    {
-        //        return Content(HttpStatusCode.Conflict, new B2CResponseModel("Can not deserialize input claims", HttpStatusCode.Conflict));
-        //    }
-
-        //    if (string.IsNullOrEmpty(inputClaims.signInName))
-        //    {
-        //        return Content(HttpStatusCode.Conflict, new B2CResponseModel("User 'signInName' is null or empty", HttpStatusCode.Conflict));
-        //    }
-
-        //    // Create a retrieve operation that takes a customer entity.
-        //    // Note: Azure Blob Table query is case sensitive, always set the input email to lower case
-        //    var retrieveOperation = TableOperation.Retrieve<UserTableEntity>(Consts.MigrationTablePartition, inputClaims.signInName.ToLower());
-
-        //    CloudTable table = await GetSignUpTable(this.AppSettings.BlobStorageConnectionString);
-
-        //    // Execute the retrieve operation.
-        //    TableResult userMigrationEntity = await table.ExecuteAsync(retrieveOperation);
-
-        //    // Checks if user exists in Azure AD B2C or the migration table. If not, raises an error
-        //    if ((userMigrationEntity != null && userMigrationEntity.Result != null) || (string.IsNullOrEmpty(inputClaims.objectId) == false))
-        //    {
-        //        return Ok();
-        //    }
-        //    else
-        //    { 
-        //        return Content(HttpStatusCode.Conflict, new B2CResponseModel("An account could not be found for the provided user ID. (migration API)", HttpStatusCode.Conflict));
-        //    }
-        //}
-
-
-        //public static async Task<CloudTable> GetSignUpTable(string conectionString)
-        //{
-        //    // Retrieve the storage account from the connection string.
-        //    CloudStorageAccount storageAccount = CloudStorageAccount.Parse(conectionString);
-
-        //    // Create the table client.
-        //    CloudTableClient tableClient = storageAccount.CreateCloudTableClient();
-
-        //    // Create the CloudTable object that represents the "people" table.
-        //    CloudTable table = tableClient.GetTableReference(Consts.MigrationTable);
-
-        //    // Create the table if it doesn't exist.
-        //    await table.CreateIfNotExistsAsync();
-
-        //    return table;
-        //}
+       
+    
     }
 
 
@@ -546,6 +468,70 @@ namespace AADB2C.JITUserMigration.Controllers
             }
         }
 
+        public async Task<bool> UpdateAccount(
+                                           string objectId,
+                                           string userType,
+                                           string signInName,
+                                           string issuer,
+                                           string issuerUserId,
+                                           string email,
+                                           string password,
+                                           string displayName,
+                                           string givenName,
+                                           string surname,
+                                           bool isActivated)
+        {
+            if (string.IsNullOrEmpty(signInName) && string.IsNullOrEmpty(issuerUserId))
+                throw new Exception("You must provide user's signInName or issuerUserId");
+
+            if (string.IsNullOrEmpty(displayName) || displayName.Length < 1)
+                throw new Exception("Dispay name is NULL or empty, you must provide valid dislay name");
+
+            try
+            {
+                // Create Graph json string from object
+                GraphAccountModel graphUserModel = new GraphAccountModel(
+                                                Tenant,
+                                                userType,
+                                                signInName,
+                                                issuer,
+                                                issuerUserId,
+                                                email,
+                                                password,
+                                                displayName,
+                                                givenName,
+                                                surname);
+
+                graphUserModel.objectId = objectId;
+                graphUserModel.accountEnabled = isActivated;
+
+
+                // Send the json to Graph API end point
+                await SendGraphRequest(string.Format("/users/{0}", graphUserModel.objectId), null, graphUserModel.ToString(), new HttpMethod("PATCH"));
+
+                Console.WriteLine($"Azure AD user account '{displayName}' updated");
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                if (ex.Message.Contains("ObjectConflict"))
+                {
+                    if (ex.Message.Contains("signInNames "))
+                        // TBD: Chnage to trace
+                        Console.WriteLine($"User with same signInNames '{signInName}' already exists in Azure AD");
+                    else if (ex.Message.Contains("userIdentities "))
+                        // TBD: Chnage to trace
+                        Console.WriteLine($"User with same userIdentities '{issuerUserId}' already exists in Azure AD");
+                    else if (ex.Message.Contains("one or more"))
+                        // TBD: Chnage to trace
+                        Console.WriteLine($"User with same userIdentities '{issuerUserId}', and signInNames '{signInName}'  already exists in Azure AD");
+
+                }
+
+                return false;
+            }
+        }
         /// <summary>
         /// Search Azure AD user by signInNames property
         /// </summary>
